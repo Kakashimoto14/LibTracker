@@ -46,7 +46,6 @@ const Badge = ({ children, variant = 'default', className = '' }) => {
 };
 
 const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:bg-slate-50" }) => {
-  // Prevent NaN crashes in CSS
   const safeValue = isNaN(value) ? 0 : Math.min(Math.max(value, 0), 100);
   return (
     <div className={`relative h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${className}`}>
@@ -215,7 +214,6 @@ const SearchView = ({ searchMode, searchQuery, isSearching, searchResults, onSel
 
 const ReaderView = ({ selectedBook, setCurrentView }) => {
   if (!selectedBook) return null;
-  // Use either the Google API ID (id) or Database mapped ID (api_id)
   const bookId = selectedBook.api_id || selectedBook.id; 
   
   return (
@@ -248,7 +246,6 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
 };
 
 const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, removeFromLibrary, addToLibrary, setCurrentView }) => {
-  // Prevent Hook Violation: Call hooks unconditionally
   const bookIdentifier = selectedBook?.api_id || selectedBook?.id;
   const libBook = getLibraryBook(bookIdentifier);
   const bookToUse = libBook || selectedBook || {};
@@ -261,7 +258,6 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
 
-  // Sync tempPages when bookToUse changes
   useEffect(() => {
     setTempPages(bookToUse.pagesRead || 0);
   }, [bookToUse.pagesRead]);
@@ -276,7 +272,6 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
-  // Safe to return null after hooks are called
   if (!selectedBook) return null;
 
   const formatTime = (totalSeconds) => {
@@ -318,7 +313,6 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
       </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        {/* Left Col */}
         <div className="md:col-span-4 lg:col-span-3 space-y-4">
           <div className="aspect-[2/3] w-full rounded-xl shadow-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border dark:border-slate-700">
             {displayThumbnail ? (
@@ -373,11 +367,10 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
           )}
         </div>
 
-        {/* Right Col */}
         <div className="md:col-span-8 lg:col-span-9 space-y-6">
           <div>
             <div className="flex flex-wrap gap-2 mb-3">
-              {bookToUse.categories?.slice(0, 3).map(cat => (
+              {(bookToUse.categories || []).slice(0, 3).map(cat => (
                 <Badge key={cat} variant="secondary">{cat}</Badge>
               ))}
             </div>
@@ -450,7 +443,6 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             </Card>
           )}
 
-          {/* AI Section */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center"><Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> AI Story Insights</h3>
@@ -488,7 +480,6 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
   );
 };
 
-// Safe JSON parser for localStorage
 const getStoredUser = () => {
   try {
     const item = localStorage.getItem('libtracker_user');
@@ -506,7 +497,7 @@ export default function App() {
   // Auth State
   const [token, setToken] = useState(localStorage.getItem('libtracker_token'));
   const [user, setUser] = useState(getStoredUser());
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authMode, setAuthMode] = useState('login');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
 
@@ -522,35 +513,15 @@ export default function App() {
 
   const searchTimeout = useRef(null);
 
-  // Load Initial Data
-  useEffect(() => {
-    fetchGoogleBooks('subject:fiction bestseller', setDiscoverBooks, 6);
+  // --- AUTHENTICATION METHODS ---
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('libtracker_token');
+    localStorage.removeItem('libtracker_user');
+    setToken(null);
+    setUser(null);
+    setLibrary([]);
   }, []);
 
-  useEffect(() => {
-    if (token) fetchLibrary();
-  }, [token]);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDarkMode);
-  }, [isDarkMode]);
-
-  // Handle Search Debounce
-  useEffect(() => {
-    if (searchMode !== 'standard') return;
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (searchQuery.trim().length > 2) {
-      searchTimeout.current = setTimeout(() => {
-        setCurrentView('search');
-        fetchGoogleBooks(searchQuery, setSearchResults);
-      }, 500);
-    } else if (searchQuery.trim().length === 0) {
-      setSearchResults([]);
-    }
-    return () => clearTimeout(searchTimeout.current);
-  }, [searchQuery, searchMode]);
-
-  // --- AUTHENTICATION METHODS ---
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -580,23 +551,15 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('libtracker_token');
-    localStorage.removeItem('libtracker_user');
-    setToken(null);
-    setUser(null);
-    setLibrary([]);
-  };
-
-  // --- DATABASE INTEGRATION (Protected Routes) ---
-  const handleAuthError = (res) => {
+  const handleAuthError = useCallback((res) => {
     if (res.status === 401 || res.status === 403) {
       handleLogout();
       throw new Error("Session expired. Please log in again.");
     }
-  };
+  }, [handleLogout]);
 
-  const fetchLibrary = async () => {
+  // --- DATABASE & API METHODS ---
+  const fetchLibrary = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/library`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -604,23 +567,50 @@ export default function App() {
       handleAuthError(res);
       const data = await res.json();
       
-      const normalizedLibrary = data.map(dbBook => ({
-        id: dbBook.api_id,
-        title: dbBook.title,
-        authors: [dbBook.author], 
-        description: dbBook.description,
-        thumbnail: dbBook.cover_image,
-        pageCount: dbBook.page_count,
-        status: dbBook.status,
-        pagesRead: dbBook.pagesRead || 0,
-        addedAt: dbBook.addedAt,
-        format: dbBook.format || 'Physical'
-      }));
-      setLibrary(normalizedLibrary);
+      if (Array.isArray(data)) {
+        const normalizedLibrary = data.map(dbBook => ({
+          id: dbBook.api_id,
+          title: dbBook.title,
+          authors: [dbBook.author], 
+          description: dbBook.description,
+          thumbnail: dbBook.cover_image,
+          pageCount: dbBook.page_count,
+          status: dbBook.status,
+          pagesRead: dbBook.pagesRead || 0,
+          addedAt: dbBook.addedAt,
+          format: dbBook.format || 'Physical'
+        }));
+        setLibrary(normalizedLibrary);
+      } else {
+        console.error("API did not return a valid array:", data);
+      }
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [token, handleAuthError]);
+
+  const fetchGoogleBooks = useCallback(async (query, setter, maxResults = 12) => {
+    setIsSearching(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
+      const data = await res.json();
+      const formatted = (data.items || []).map(item => ({
+        id: item.id,
+        title: item.volumeInfo?.title || 'Unknown Title',
+        authors: item.volumeInfo?.authors || ['Unknown Author'],
+        description: item.volumeInfo?.description || 'No description available.',
+        thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
+        pageCount: item.volumeInfo?.pageCount || 0,
+        publishedDate: item.volumeInfo?.publishedDate,
+        categories: item.volumeInfo?.categories || [],
+      }));
+      setter(formatted);
+    } catch (err) {
+      console.error(err);
+    } finally { 
+      setIsSearching(false); 
+    }
+  }, []);
 
   const addToLibrary = async (book, status = 'want_to_read') => {
     if (!library.find(b => b.id === book.id)) {
@@ -663,25 +653,6 @@ export default function App() {
     } catch (error) { console.error(error); }
   };
 
-  const fetchGoogleBooks = async (query, setter, maxResults = 12) => {
-    setIsSearching(true);
-    try {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
-      const data = await res.json();
-      const formatted = (data.items || []).map(item => ({
-        id: item.id,
-        title: item.volumeInfo?.title || 'Unknown Title',
-        authors: item.volumeInfo?.authors || ['Unknown Author'],
-        description: item.volumeInfo?.description || 'No description available.',
-        thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
-        pageCount: item.volumeInfo?.pageCount || 0,
-        publishedDate: item.volumeInfo?.publishedDate,
-        categories: item.volumeInfo?.categories || [],
-      }));
-      setter(formatted);
-    } finally { setIsSearching(false); }
-  };
-
   const handleVibeSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim() || searchMode !== 'vibe') return;
@@ -691,8 +662,6 @@ export default function App() {
 
     try {
       const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles for this vibe: "${searchQuery}".`, true);
-      
-      // Safely parse JSON even if the AI responds with markdown backticks
       const cleanJson = jsonResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       const recommendedTitles = JSON.parse(cleanJson);
       
@@ -718,6 +687,33 @@ export default function App() {
 
   const getLibraryBook = (bookId) => library.find(b => b.id === bookId || b.api_id === bookId);
   const handleSelectBook = (book) => { setSelectedBook(book); setCurrentView('book_detail'); };
+
+  // --- EFFECTS ---
+  useEffect(() => {
+    fetchGoogleBooks('subject:fiction bestseller', setDiscoverBooks, 6);
+  }, [fetchGoogleBooks]);
+
+  useEffect(() => {
+    if (token) fetchLibrary();
+  }, [token, fetchLibrary]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    if (searchMode !== 'standard') return;
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (searchQuery.trim().length > 2) {
+      searchTimeout.current = setTimeout(() => {
+        setCurrentView('search');
+        fetchGoogleBooks(searchQuery, setSearchResults);
+      }, 500);
+    } else if (searchQuery.trim().length === 0) {
+      setSearchResults([]);
+    }
+    return () => clearTimeout(searchTimeout.current);
+  }, [searchQuery, searchMode, fetchGoogleBooks]);
 
   // --- RENDER AUTH SCREEN IF NOT LOGGED IN ---
   if (!token) {
@@ -804,8 +800,8 @@ export default function App() {
       <main className="flex-grow container mx-auto px-4 py-8">
         {currentView === 'dashboard' && <DashboardView user={user} library={library} readingGoal={readingGoal} discoverBooks={discoverBooks} onSelectBook={handleSelectBook} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} />}
         {currentView === 'search' && <SearchView searchMode={searchMode} searchQuery={searchQuery} isSearching={isSearching} searchResults={searchResults} onSelectBook={handleSelectBook} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} />}
-        {currentView === 'book_detail' && <BookDetailView selectedBook={selectedBook} getLibraryBook={getLibraryBook} updateLibraryBook={updateLibraryBook} removeFromLibrary={removeFromLibrary} addToLibrary={addToLibrary} setCurrentView={setCurrentView} />}
-        {currentView === 'reader' && <ReaderView selectedBook={selectedBook} setCurrentView={setCurrentView} />}
+        {currentView === 'book_detail' && selectedBook && <BookDetailView selectedBook={selectedBook} getLibraryBook={getLibraryBook} updateLibraryBook={updateLibraryBook} removeFromLibrary={removeFromLibrary} addToLibrary={addToLibrary} setCurrentView={setCurrentView} />}
+        {currentView === 'reader' && selectedBook && <ReaderView selectedBook={selectedBook} setCurrentView={setCurrentView} />}
       </main>
     </div>
   );
