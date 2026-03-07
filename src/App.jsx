@@ -484,11 +484,11 @@ export default function App() {
         setCurrentView('search');
         fetchGoogleBooks(searchQuery, setSearchResults);
       }, 500);
-    } else if (searchQuery.trim().length === 0 && currentView === 'search') {
+    } else if (searchQuery.trim().length === 0) {
       setSearchResults([]);
     }
     return () => clearTimeout(searchTimeout.current);
-  }, [searchQuery, searchMode, currentView]);
+  }, [searchQuery, searchMode]);
 
   const fetchGoogleBooks = async (query, setter, maxResults = 12) => {
     setIsSearching(true);
