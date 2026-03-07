@@ -49,19 +49,25 @@ const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:b
 
 // --- GEMINI API HELPER ---
 const fetchGeminiResponse = async (prompt, asJson = false) => {
-  // SECURE: Uses Vite environment variable instead of hardcoded key
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY; 
-  
-  if (!apiKey) {
-    throw new Error("API Key missing. Add VITE_GEMINI_API_KEY to your environment variables.");
+  // Use a safer, targeted approach to environment variables to fix the import.meta ES2015 issue
+  let apiKey = "";
+  try {
+    // Check if we can access the env variable via import.meta safely
+    const metaEnv = typeof import.meta !== 'undefined' ? import.meta.env : {};
+    apiKey = metaEnv?.VITE_GEMINI_API_KEY || "";
+  } catch (e) {
+    apiKey = "";
   }
 
-  // Use gemini-1.5-flash which is the standard model for personal API keys
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  if (!apiKey) {
+    throw new Error("API Key missing. Please ensure VITE_GEMINI_API_KEY is configured in your Vercel Environment Variables.");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: "You are an expert librarian and book recommender." }] }
+    systemInstruction: { parts: [{ text: "You are an expert librarian and book recommender. Provide high-quality, engaging insights." }] }
   };
 
   if (asJson) {
@@ -92,7 +98,7 @@ const fetchGeminiResponse = async (prompt, asJson = false) => {
   }
 };
 
-// --- EXTRACTED VIEWS ---
+// --- VIEW COMPONENTS ---
 
 const BookCard = ({ book, getLibraryBook, addToLibrary, onSelectBook }) => (
   <Card onClick={() => onSelectBook(book)} className="flex flex-col h-full overflow-hidden group">
@@ -131,7 +137,7 @@ const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getL
           <h2 className="text-2xl font-bold tracking-tight mb-2 flex items-center">
             Welcome back! <Sparkles className="w-5 h-5 ml-2 text-indigo-500" />
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 mb-6">You're currently reading {readingBooks.length} books. Keep it up!</p>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">You're currently tracking {readingBooks.length} books. Keep up the momentum!</p>
           
           {readingBooks.length > 0 && (
             <div className="flex gap-4 overflow-x-auto pb-2">
@@ -152,18 +158,18 @@ const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getL
         <Card className="p-6 flex flex-col items-center justify-center text-center relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy className="w-24 h-24" /></div>
           <Trophy className="w-8 h-8 text-yellow-500 mb-3" />
-          <h3 className="font-bold text-lg mb-1">2026 Reading Challenge</h3>
+          <h3 className="font-bold text-lg mb-1">2026 Reading Goal</h3>
           <p className="text-3xl font-black text-slate-900 dark:text-white mb-2">
             {completedBooks} <span className="text-lg font-medium text-slate-500">/ {readingGoal}</span>
           </p>
           <Progress value={challengeProgress} className="mb-2 h-3" indicatorClass="bg-yellow-500" />
-          <p className="text-xs text-slate-500">{completedBooks} books completed this year</p>
+          <p className="text-xs text-slate-500">{completedBooks} books finished this year</p>
         </Card>
       </div>
 
       <section>
         <h2 className="text-xl font-bold tracking-tight mb-4 flex items-center">
-          <Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> Recommended For You
+          <Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> Trending & Recommendations
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-6">
           {discoverBooks.map(book => <BookCard key={book.id} book={book} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} onSelectBook={onSelectBook} />)}
@@ -187,7 +193,7 @@ const SearchView = ({ searchMode, searchQuery, isSearching, searchResults, onSel
     {isSearching ? (
       <div className="flex flex-col justify-center items-center py-20 space-y-4">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-        {searchMode === 'vibe' && <p className="text-sm text-slate-500 animate-pulse">AI is reading the vibes and finding books...</p>}
+        {searchMode === 'vibe' && <p className="text-sm text-slate-500 animate-pulse">AI is searching for the perfect books based on your vibe...</p>}
       </div>
     ) : searchResults.length > 0 ? (
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 lg:gap-6">
@@ -195,7 +201,7 @@ const SearchView = ({ searchMode, searchQuery, isSearching, searchResults, onSel
       </div>
     ) : (
       <div className="text-center py-20 text-slate-500">
-        {searchMode === 'vibe' ? "Tell the AI what you're in the mood for and press Enter!" : "No books found. Try a different search term."}
+        {searchMode === 'vibe' ? "Describe the mood or setting you want, and let AI find books!" : "No books found. Try searching for a specific title or author."}
       </div>
     )}
   </div>
@@ -208,10 +214,10 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-xl font-bold">{selectedBook.title}</h2>
-          <p className="text-sm text-slate-500">Embedded Reader</p>
+          <p className="text-sm text-slate-500">Embedded Reader View</p>
         </div>
         <Button variant="outline" onClick={() => setCurrentView('book_detail')}>
-          <X className="w-4 h-4 mr-2" /> Close Reader
+          <X className="w-4 h-4 mr-2" /> Exit Reader
         </Button>
       </div>
       <div className="flex-grow rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white shadow-inner relative">
@@ -221,12 +227,12 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
           height="100%"
           frameBorder="0"
           scrolling="no"
-          title="Google Books Reader"
+          title="Google Books Preview"
           className="absolute top-0 left-0 w-full h-full"
         ></iframe>
       </div>
       <p className="text-xs text-slate-500 mt-3 text-center">
-        Note: Full access depends on Google Books. Licensed titles may only display a preview. Public domain books are available in full.
+        Access provided by Google Books. Licensed content often provides a high-quality preview, while public domain works are available in full.
       </p>
     </div>
   );
@@ -265,12 +271,12 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     setIsGeneratingSummary(true);
     setAiSummary(null);
     try {
-      const text = await fetchGeminiResponse(`Provide a short, 3-sentence spoiler-free summary and 3 bullet points of main themes for the book "${bookToUse.title}" by ${bookToUse.authors[0]}. Make it engaging.`);
-      if (!text) throw new Error("No response from AI.");
+      const text = await fetchGeminiResponse(`Provide a concise, spoiler-free 3-sentence summary and 3 key themes for: "${bookToUse.title}" by ${bookToUse.authors[0]}.`);
+      if (!text) throw new Error("No response received.");
       setAiSummary(text);
     } catch (err) {
       console.error(err);
-      setAiSummary(`Error: ${err.message}. Check your Vercel Environment Variables.`);
+      setAiSummary(`Could not generate summary: ${err.message}. Ensure your AI API Key is correctly configured.`);
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -279,10 +285,11 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500 pb-20">
       <Button variant="ghost" onClick={() => setCurrentView('dashboard')} className="-ml-4 mb-2">
-        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        <ArrowLeft className="w-4 h-4 mr-2" /> Return
       </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        {/* Left Col */}
         <div className="md:col-span-4 lg:col-span-3 space-y-4">
           <div className="aspect-[2/3] w-full rounded-xl shadow-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border dark:border-slate-700">
             {bookToUse.thumbnail ? (
@@ -297,25 +304,28 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
           </Button>
 
           {libBook ? (
-            <Card className="p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
-              <select 
-                className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
-                value={libBook.status}
-                onChange={(e) => updateLibraryBook(libBook.id, { status: e.target.value })}
-              >
-                <option value="want_to_read">Want to Read</option>
-                <option value="reading">Currently Reading</option>
-                <option value="completed">Completed</option>
-              </select>
+            <Card className="p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50 border-indigo-50 dark:border-indigo-900/20">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reading Status</label>
+                <select 
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
+                  value={libBook.status}
+                  onChange={(e) => updateLibraryBook(libBook.id, { status: e.target.value })}
+                >
+                  <option value="want_to_read">Plan to Read</option>
+                  <option value="reading">Currently Reading</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center"><BookType className="w-3 h-3 mr-1"/> Format</label>
                 <select 
                   className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
-                  value={libBook.format}
+                  value={libBook.format || 'Physical'}
                   onChange={(e) => updateLibraryBook(libBook.id, { format: e.target.value })}
                 >
-                  <option value="Physical">Physical Book</option>
+                  <option value="Physical">Physical</option>
                   <option value="E-book">E-book</option>
                   <option value="Audiobook">Audiobook</option>
                 </select>
@@ -327,11 +337,12 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             </Card>
           ) : (
             <Button variant="outline" className="w-full border-slate-300 dark:border-slate-700" onClick={() => addToLibrary(selectedBook)}>
-              <Plus className="w-4 h-4 mr-2" /> Add to Tracker
+              <Plus className="w-4 h-4 mr-2" /> Add to Library
             </Button>
           )}
         </div>
 
+        {/* Right Col */}
         <div className="md:col-span-8 lg:col-span-9 space-y-6">
           <div>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -356,7 +367,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                       <Timer className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reading Session</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Time</p>
                       <p className="text-2xl font-mono font-bold">{formatTime(timerSeconds)}</p>
                     </div>
                   </div>
@@ -380,7 +391,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
 
                 <div className="flex-1 w-full space-y-3">
                   <div className="flex justify-between text-sm font-medium">
-                    <span>Update Progress</span>
+                    <span>Reading Progress</span>
                     <span>{Math.round((libBook.pagesRead / (bookToUse.pageCount || 1)) * 100)}%</span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -390,7 +401,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                       onChange={(e) => setTempPages(Number(e.target.value))}
                       className="w-24 text-center font-mono"
                     />
-                    <span className="text-sm text-slate-500 whitespace-nowrap">/ {bookToUse.pageCount || '?'} pgs</span>
+                    <span className="text-sm text-slate-500 whitespace-nowrap">/ {bookToUse.pageCount || '?'} pages</span>
                     <Button onClick={() => {
                       updateLibraryBook(libBook.id, { pagesRead: tempPages });
                       if (timerSeconds > 0) setTimerSeconds(0);
@@ -402,12 +413,13 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             </Card>
           )}
 
+          {/* AI Section */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold flex items-center"><Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> AI Book Insights</h3>
+              <h3 className="text-lg font-semibold flex items-center"><Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> AI Story Insights</h3>
               {!aiSummary && !isGeneratingSummary && (
                 <Button variant="ai" size="sm" onClick={handleGetSummary}>
-                  <Sparkles className="w-4 h-4 mr-2" /> Generate Summary
+                  <Sparkles className="w-4 h-4 mr-2" /> Ask AI
                 </Button>
               )}
             </div>
@@ -415,7 +427,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             {isGeneratingSummary ? (
               <div className="p-6 rounded-xl border border-indigo-100 bg-indigo-50/50 dark:bg-indigo-950/20 dark:border-indigo-900/30 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-indigo-500 mr-3" />
-                <span className="text-indigo-700 dark:text-indigo-300 font-medium">AI is reading the book...</span>
+                <span className="text-indigo-700 dark:text-indigo-300 font-medium">AI is generating insights...</span>
               </div>
             ) : aiSummary ? (
               <div className="p-6 rounded-xl border border-indigo-100 bg-indigo-50/50 dark:bg-indigo-950/20 dark:border-indigo-900/30">
@@ -427,7 +439,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
           </div>
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-lg font-semibold mb-3">Publisher Description</h3>
+            <h3 className="text-lg font-semibold mb-3">About this Book</h3>
             <div 
               className="prose prose-slate dark:prose-invert max-w-none prose-p:leading-relaxed text-slate-600 dark:text-slate-400"
               dangerouslySetInnerHTML={{ __html: bookToUse.description }}
@@ -439,8 +451,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
   );
 };
 
-
-// --- MAIN APPLICATION COMPONENT ---
+// --- MAIN APP COMPONENT ---
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
@@ -465,12 +476,9 @@ export default function App() {
     document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
 
-  // Safe debounce search
   useEffect(() => {
     if (searchMode !== 'standard') return;
-    
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    
     if (searchQuery.trim().length > 2) {
       searchTimeout.current = setTimeout(() => {
         setCurrentView('search');
@@ -479,16 +487,15 @@ export default function App() {
     } else if (searchQuery.trim().length === 0 && currentView === 'search') {
       setSearchResults([]);
     }
-
     return () => clearTimeout(searchTimeout.current);
-  }, [searchQuery, searchMode]);
+  }, [searchQuery, searchMode, currentView]);
 
   const fetchGoogleBooks = async (query, setter, maxResults = 12) => {
     setIsSearching(true);
     try {
       const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
       const data = await res.json();
-      const formattedBooks = (data.items || []).map(item => ({
+      const formatted = (data.items || []).map(item => ({
         id: item.id,
         title: item.volumeInfo?.title || 'Unknown Title',
         authors: item.volumeInfo?.authors || ['Unknown Author'],
@@ -498,10 +505,9 @@ export default function App() {
         publishedDate: item.volumeInfo?.publishedDate,
         categories: item.volumeInfo?.categories || [],
       }));
-      setter(formattedBooks);
+      setter(formatted);
     } catch (error) {
       console.error("Error fetching books:", error);
-      setter([]);
     } finally {
       setIsSearching(false);
     }
@@ -516,7 +522,7 @@ export default function App() {
     setSearchResults([]);
 
     try {
-      const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles based on this vibe/description: "${searchQuery}".`, true);
+      const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles for this vibe: "${searchQuery}".`, true);
       const recommendedTitles = JSON.parse(jsonResponse);
       
       const bookPromises = recommendedTitles.map(title => 
@@ -524,16 +530,15 @@ export default function App() {
       );
       
       const results = await Promise.all(bookPromises);
-      
       const finalBooks = results
         .filter(data => data.items && data.items.length > 0)
         .map(data => {
           const item = data.items[0];
           return {
             id: item.id,
-            title: item.volumeInfo?.title || 'Unknown Title',
+            title: item.volumeInfo?.title || 'Unknown',
             authors: item.volumeInfo?.authors || ['Unknown'],
-            description: item.volumeInfo?.description || 'No description.',
+            description: item.volumeInfo?.description || '',
             thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
             pageCount: item.volumeInfo?.pageCount || 0,
             categories: item.volumeInfo?.categories || [],
@@ -542,16 +547,16 @@ export default function App() {
 
       setSearchResults(finalBooks);
     } catch (error) {
-      console.error("Vibe search failed:", error);
-      alert("Failed to get AI recommendations. Check your API key setting on Vercel.");
+      console.error("Vibe search error:", error);
+      alert("AI Search failed. Please check your environment configuration.");
     } finally {
       setIsSearching(false);
     }
   };
 
-  const addToLibrary = (book, status = 'want_to_read') => {
+  const addToLibrary = (book) => {
     if (!library.find(b => b.id === book.id)) {
-      setLibrary([...library, { ...book, status, pagesRead: 0, addedAt: Date.now(), format: 'Physical', tags: [] }]);
+      setLibrary([...library, { ...book, status: 'want_to_read', pagesRead: 0, addedAt: Date.now(), format: 'Physical' }]);
     }
   };
 
@@ -582,14 +587,13 @@ export default function App() {
               <form onSubmit={searchMode === 'vibe' ? handleVibeSearch : (e) => e.preventDefault()}>
                 <Input 
                   type="text" 
-                  placeholder={searchMode === 'vibe' ? "Describe a vibe: 'A cozy sci-fi mystery...'" : "Search by title, author..."}
+                  placeholder={searchMode === 'vibe' ? "Describe the mood: 'A cozy fantasy mystery...'" : "Title, author, or ISBN..."}
                   className={`w-full pl-9 pr-9 transition-colors ${searchMode === 'vibe' ? 'bg-indigo-50 border-indigo-200 focus-visible:ring-indigo-500 dark:bg-indigo-950/30 dark:border-indigo-800' : 'bg-slate-100 border-transparent focus-visible:bg-white dark:bg-slate-900 dark:focus-visible:bg-slate-950'}`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </form>
             </div>
-            
             <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 shrink-0 border dark:border-slate-800">
               <button onClick={() => setSearchMode('standard')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${searchMode === 'standard' ? 'bg-white shadow-sm dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700'}`}>Standard</button>
               <button onClick={() => setSearchMode('vibe')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center ${searchMode === 'vibe' ? 'bg-indigo-600 shadow-sm text-white' : 'text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}><Sparkles className="w-3 h-3 mr-1" /> Vibe AI</button>
