@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  BookOpen, Search, Library, LayoutDashboard, 
-  Moon, Sun, Plus, Check, ChevronRight, 
-  Star, ArrowLeft, Loader2, MapPin, X, BookMarked,
-  Sparkles, Timer, Trophy, Play, Square, Pause, RotateCcw,
-  Tags, BookType, LogOut, User as UserIcon
+  BookOpen, Search, Sun, Moon, Plus, ArrowLeft, Loader2, X,
+  Sparkles, Timer, Trophy, Play, Pause, RotateCcw, BookType, LogOut
 } from 'lucide-react';
 
 // ==========================================
@@ -48,11 +45,15 @@ const Badge = ({ children, variant = 'default', className = '' }) => {
   return <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${variants[variant]} ${className}`}>{children}</div>;
 };
 
-const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:bg-slate-50" }) => (
-  <div className={`relative h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${className}`}>
-    <div className={`h-full w-full flex-1 transition-all ${indicatorClass}`} style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
-  </div>
-);
+const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:bg-slate-50" }) => {
+  // Prevent NaN crashes in CSS
+  const safeValue = isNaN(value) ? 0 : Math.min(Math.max(value, 0), 100);
+  return (
+    <div className={`relative h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${className}`}>
+      <div className={`h-full w-full flex-1 transition-all ${indicatorClass}`} style={{ transform: `translateX(-${100 - safeValue}%)` }} />
+    </div>
+  );
+};
 
 // --- GEMINI API HELPER ---
 const fetchGeminiResponse = async (prompt, asJson = false) => {
@@ -116,7 +117,7 @@ const BookCard = ({ book, getLibraryBook, addToLibrary, onSelectBook }) => (
     </div>
     <div className="p-4 flex flex-col flex-grow">
       <h3 className="font-semibold text-sm line-clamp-2 mb-1">{book.title}</h3>
-      <p className="text-xs text-slate-500 line-clamp-1 mb-2">{book.authors[0]}</p>
+      <p className="text-xs text-slate-500 line-clamp-1 mb-2">{book.authors?.[0] || 'Unknown Author'}</p>
       <div className="mt-auto">
         {getLibraryBook(book.id || book.api_id) ? (
           <Badge variant="secondary" className="w-full justify-center">In Library</Badge>
@@ -247,12 +248,10 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
 };
 
 const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, removeFromLibrary, addToLibrary, setCurrentView }) => {
-  if (!selectedBook) return null;
-  
-  // Normalize book IDs (Database uses 'api_id', Google uses 'id')
-  const bookIdentifier = selectedBook.api_id || selectedBook.id;
+  // Prevent Hook Violation: Call hooks unconditionally
+  const bookIdentifier = selectedBook?.api_id || selectedBook?.id;
   const libBook = getLibraryBook(bookIdentifier);
-  const bookToUse = libBook || selectedBook;
+  const bookToUse = libBook || selectedBook || {};
 
   const [tempPages, setTempPages] = useState(bookToUse.pagesRead || 0);
   const [aiSummary, setAiSummary] = useState(null);
@@ -276,6 +275,9 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
+
+  // Safe to return null after hooks are called
+  if (!selectedBook) return null;
 
   const formatTime = (totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -477,13 +479,23 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             <h3 className="text-lg font-semibold mb-3">About this Book</h3>
             <div 
               className="prose prose-slate dark:prose-invert max-w-none prose-p:leading-relaxed text-slate-600 dark:text-slate-400"
-              dangerouslySetInnerHTML={{ __html: bookToUse.description }}
+              dangerouslySetInnerHTML={{ __html: bookToUse.description || "No description provided." }}
             />
           </div>
         </div>
       </div>
     </div>
   );
+};
+
+// Safe JSON parser for localStorage
+const getStoredUser = () => {
+  try {
+    const item = localStorage.getItem('libtracker_user');
+    return item && item !== 'undefined' ? JSON.parse(item) : null;
+  } catch (err) {
+    return null;
+  }
 };
 
 // --- MAIN APP COMPONENT ---
@@ -493,7 +505,7 @@ export default function App() {
   
   // Auth State
   const [token, setToken] = useState(localStorage.getItem('libtracker_token'));
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('libtracker_user')) || null);
+  const [user, setUser] = useState(getStoredUser());
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
@@ -549,7 +561,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(authForm)
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error('Server returned an invalid response.');
+      }
       
       if (!res.ok) throw new Error(data.error || 'Authentication failed');
       
@@ -673,7 +691,11 @@ export default function App() {
 
     try {
       const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles for this vibe: "${searchQuery}".`, true);
-      const recommendedTitles = JSON.parse(jsonResponse);
+      
+      // Safely parse JSON even if the AI responds with markdown backticks
+      const cleanJson = jsonResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const recommendedTitles = JSON.parse(cleanJson);
+      
       const bookPromises = recommendedTitles.map(title => 
         fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + title)}&maxResults=1`).then(res => res.json())
       );
@@ -690,6 +712,7 @@ export default function App() {
       setSearchResults(finalBooks);
     } catch (error) {
       alert("AI Search failed. Please check your environment configuration.");
+      console.error(error);
     } finally { setIsSearching(false); }
   };
 
