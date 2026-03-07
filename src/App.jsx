@@ -49,9 +49,14 @@ const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:b
 
 // --- GEMINI API HELPER ---
 const fetchGeminiResponse = async (prompt, asJson = false) => {
-  // PASTE YOUR ACTUAL GOOGLE GEMINI API KEY HERE
-  const apiKey = "AIzaSyB33i3htgyE31zLU9swiwgPe3MRce43xCQ"; 
+  // SECURE: Uses Vite environment variable instead of hardcoded key
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY; 
   
+  if (!apiKey) {
+    throw new Error("API Key missing. Add VITE_GEMINI_API_KEY to your environment variables.");
+  }
+
+  // Use gemini-1.5-flash which is the standard model for personal API keys
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   
   const payload = {
@@ -74,7 +79,10 @@ const fetchGeminiResponse = async (prompt, asJson = false) => {
   for (let i = 0; i < 5; i++) {
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error?.message || `HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       return data.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (err) {
@@ -99,7 +107,7 @@ const BookCard = ({ book, getLibraryBook, addToLibrary, onSelectBook }) => (
       <h3 className="font-semibold text-sm line-clamp-2 mb-1">{book.title}</h3>
       <p className="text-xs text-slate-500 line-clamp-1 mb-2">{book.authors[0]}</p>
       <div className="mt-auto">
-        {getLibraryBook(book.api_id) ? (
+        {getLibraryBook(book.id) ? (
           <Badge variant="secondary" className="w-full justify-center">In Library</Badge>
         ) : (
           <Button variant="outline" size="sm" className="w-full text-xs" onClick={(e) => { e.stopPropagation(); addToLibrary(book); }}>
@@ -128,7 +136,7 @@ const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getL
           {readingBooks.length > 0 && (
             <div className="flex gap-4 overflow-x-auto pb-2">
               {readingBooks.map(book => (
-                <div key={book.api_id} onClick={() => onSelectBook(book)} className="flex gap-3 bg-white dark:bg-slate-800 p-3 rounded-lg border shadow-sm min-w-[280px] cursor-pointer hover:border-indigo-300 transition-colors">
+                <div key={book.id} onClick={() => onSelectBook(book)} className="flex gap-3 bg-white dark:bg-slate-800 p-3 rounded-lg border shadow-sm min-w-[280px] cursor-pointer hover:border-indigo-300 transition-colors">
                   <img src={book.thumbnail} className="w-12 h-16 object-cover rounded shadow-sm" />
                   <div className="flex-1">
                     <h4 className="font-medium text-sm line-clamp-1">{book.title}</h4>
@@ -158,7 +166,7 @@ const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getL
           <Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> Recommended For You
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-6">
-          {discoverBooks.map(book => <BookCard key={book.api_id} book={book} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} onSelectBook={onSelectBook} />)}
+          {discoverBooks.map(book => <BookCard key={book.id} book={book} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} onSelectBook={onSelectBook} />)}
         </div>
       </section>
     </div>
@@ -183,7 +191,7 @@ const SearchView = ({ searchMode, searchQuery, isSearching, searchResults, onSel
       </div>
     ) : searchResults.length > 0 ? (
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 lg:gap-6">
-        {searchResults.map(book => <BookCard key={book.api_id} book={book} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} onSelectBook={onSelectBook} />)}
+        {searchResults.map(book => <BookCard key={book.id} book={book} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} onSelectBook={onSelectBook} />)}
       </div>
     ) : (
       <div className="text-center py-20 text-slate-500">
@@ -208,7 +216,7 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
       </div>
       <div className="flex-grow rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white shadow-inner relative">
         <iframe
-          src={`https://books.google.com/books?id=${selectedBook.api_id}&lpg=PP1&pg=PP1&output=embed`}
+          src={`https://books.google.com/books?id=${selectedBook.id}&lpg=PP1&pg=PP1&output=embed`}
           width="100%"
           height="100%"
           frameBorder="0"
@@ -218,7 +226,7 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
         ></iframe>
       </div>
       <p className="text-xs text-slate-500 mt-3 text-center">
-        Note: Full access depends on Google Books. Licensed titles (like Harry Potter or manga) may only display a preview. Public domain books are available in full.
+        Note: Full access depends on Google Books. Licensed titles may only display a preview. Public domain books are available in full.
       </p>
     </div>
   );
@@ -226,7 +234,7 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
 
 const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, removeFromLibrary, addToLibrary, setCurrentView }) => {
   if (!selectedBook) return null;
-  const libBook = getLibraryBook(selectedBook.api_id);
+  const libBook = getLibraryBook(selectedBook.id);
   const bookToUse = libBook || selectedBook;
 
   const [tempPages, setTempPages] = useState(bookToUse.pagesRead || 0);
@@ -255,13 +263,14 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
 
   const handleGetSummary = async () => {
     setIsGeneratingSummary(true);
+    setAiSummary(null);
     try {
       const text = await fetchGeminiResponse(`Provide a short, 3-sentence spoiler-free summary and 3 bullet points of main themes for the book "${bookToUse.title}" by ${bookToUse.authors[0]}. Make it engaging.`);
       if (!text) throw new Error("No response from AI.");
       setAiSummary(text);
     } catch (err) {
       console.error(err);
-      setAiSummary("Failed to generate summary. Make sure you pasted your API key in App.jsx!");
+      setAiSummary(`Error: ${err.message}. Check your Vercel Environment Variables.`);
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -292,7 +301,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
               <select 
                 className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
                 value={libBook.status}
-                onChange={(e) => updateLibraryBook(libBook.api_id, { status: e.target.value })}
+                onChange={(e) => updateLibraryBook(libBook.id, { status: e.target.value })}
               >
                 <option value="want_to_read">Want to Read</option>
                 <option value="reading">Currently Reading</option>
@@ -304,7 +313,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                 <select 
                   className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
                   value={libBook.format}
-                  onChange={(e) => updateLibraryBook(libBook.api_id, { format: e.target.value })}
+                  onChange={(e) => updateLibraryBook(libBook.id, { format: e.target.value })}
                 >
                   <option value="Physical">Physical Book</option>
                   <option value="E-book">E-book</option>
@@ -312,7 +321,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                 </select>
               </div>
 
-              <Button variant="outline" className="w-full text-red-600 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-950/30" onClick={() => removeFromLibrary(libBook.api_id)}>
+              <Button variant="outline" className="w-full text-red-600 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-950/30" onClick={() => removeFromLibrary(libBook.id)}>
                 Remove from Library
               </Button>
             </Card>
@@ -334,7 +343,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
               {bookToUse.title}
             </h1>
             <p className="text-xl text-slate-600 dark:text-slate-400">
-              by {bookToUse.authors?.join(', ') || 'Unknown Author'}
+              by {bookToUse.authors.join(', ')}
             </p>
           </div>
 
@@ -383,7 +392,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                     />
                     <span className="text-sm text-slate-500 whitespace-nowrap">/ {bookToUse.pageCount || '?'} pgs</span>
                     <Button onClick={() => {
-                      updateLibraryBook(libBook.api_id, { pagesRead: tempPages });
+                      updateLibraryBook(libBook.id, { pagesRead: tempPages });
                       if (timerSeconds > 0) setTimerSeconds(0);
                     }} className="w-full">Save</Button>
                   </div>
@@ -421,7 +430,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             <h3 className="text-lg font-semibold mb-3">Publisher Description</h3>
             <div 
               className="prose prose-slate dark:prose-invert max-w-none prose-p:leading-relaxed text-slate-600 dark:text-slate-400"
-              dangerouslySetInnerHTML={{ __html: bookToUse.description || "No description provided." }}
+              dangerouslySetInnerHTML={{ __html: bookToUse.description }}
             />
           </div>
         </div>
@@ -429,6 +438,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     </div>
   );
 };
+
 
 // --- MAIN APPLICATION COMPONENT ---
 export default function App() {
@@ -447,33 +457,15 @@ export default function App() {
 
   const searchTimeout = useRef(null);
 
-  // BASE URL for the local Node.js backend
-  const API_URL = 'https://library-api-do91.onrender.com';
-
-  // Helper to check if running locally (prevents fetch errors in Canvas preview)
-  const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-  // 1. FETCH BOOKS FROM BACKEND ON LOAD
   useEffect(() => {
     fetchGoogleBooks('subject:fiction bestseller', setDiscoverBooks, 6);
-
-    if (isLocalEnv) {
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            // Data is already formatted in the backend!
-            setLibrary(data);
-          }
-        })
-        .catch(err => console.warn("Backend not running. Using local state.", err));
-    }
   }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
 
+  // Safe debounce search
   useEffect(() => {
     if (searchMode !== 'standard') return;
     
@@ -498,7 +490,6 @@ export default function App() {
       const data = await res.json();
       const formattedBooks = (data.items || []).map(item => ({
         id: item.id,
-        api_id: item.id, // Using api_id directly from the start
         title: item.volumeInfo?.title || 'Unknown Title',
         authors: item.volumeInfo?.authors || ['Unknown Author'],
         description: item.volumeInfo?.description || 'No description available.',
@@ -540,7 +531,6 @@ export default function App() {
           const item = data.items[0];
           return {
             id: item.id,
-            api_id: item.id,
             title: item.volumeInfo?.title || 'Unknown Title',
             authors: item.volumeInfo?.authors || ['Unknown'],
             description: item.volumeInfo?.description || 'No description.',
@@ -553,77 +543,21 @@ export default function App() {
       setSearchResults(finalBooks);
     } catch (error) {
       console.error("Vibe search failed:", error);
-      alert("Failed to get AI recommendations. Try again.");
+      alert("Failed to get AI recommendations. Check your API key setting on Vercel.");
     } finally {
       setIsSearching(false);
     }
   };
 
-  // 2. CONNECTED API FUNCTIONS
-  const addToLibrary = async (book, status = 'want_to_read') => {
-    if (!library.find(b => b.api_id === book.api_id)) {
-      // Optimistic UI Update (displays instantly)
-      setLibrary([...library, { ...book, status, pagesRead: 0, addedAt: Date.now(), format: 'Physical' }]);
-
-      // Post to Backend
-      if (isLocalEnv) {
-        try {
-          await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: book.api_id,
-              title: book.title,
-              authors: book.authors,
-              description: book.description,
-              thumbnail: book.thumbnail,
-              publishedDate: book.publishedDate,
-              pageCount: book.pageCount,
-              categories: book.categories,
-              status: status,
-              format: 'Physical'
-            })
-          });
-        } catch (err) {
-          console.warn("Backend not running, book saved to local memory only.");
-        }
-      }
+  const addToLibrary = (book, status = 'want_to_read') => {
+    if (!library.find(b => b.id === book.id)) {
+      setLibrary([...library, { ...book, status, pagesRead: 0, addedAt: Date.now(), format: 'Physical', tags: [] }]);
     }
   };
 
-  const updateLibraryBook = async (bookApiId, updates) => {
-    // Optimistic UI Update
-    setLibrary(library.map(b => b.api_id === bookApiId ? { ...b, ...updates } : b));
-    
-    // Put to Backend
-    if (isLocalEnv) {
-      try {
-        await fetch(`${API_URL}/${bookApiId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates)
-        });
-      } catch (err) {
-        console.warn("Backend not running, book updated in local memory only.");
-      }
-    }
-  };
-
-  const removeFromLibrary = async (bookApiId) => {
-    // Optimistic UI Update
-    setLibrary(library.filter(b => b.api_id !== bookApiId));
-
-    // Delete from Backend
-    if (isLocalEnv) {
-      try {
-        await fetch(`${API_URL}/${bookApiId}`, { method: 'DELETE' });
-      } catch (err) {
-        console.warn("Backend not running, book removed from local memory only.");
-      }
-    }
-  };
-
-  const getLibraryBook = (bookApiId) => library.find(b => b.api_id === bookApiId);
+  const updateLibraryBook = (bookId, updates) => setLibrary(library.map(b => b.id === bookId ? { ...b, ...updates } : b));
+  const removeFromLibrary = (bookId) => setLibrary(library.filter(b => b.id !== bookId));
+  const getLibraryBook = (bookId) => library.find(b => b.id === bookId);
   
   const handleSelectBook = (book) => {
     setSelectedBook(book);
