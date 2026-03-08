@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  BookOpen, Search, Library, LayoutDashboard, 
-  Moon, Sun, Plus, Check, ChevronRight, 
-  Star, ArrowLeft, Loader2, MapPin, X, BookMarked,
-  Sparkles, Timer, Trophy, Play, Square, Pause, RotateCcw,
-  Tags, BookType
+  BookOpen, Search, Sun, Moon, Plus, ArrowLeft, Loader2, X,
+  Sparkles, Timer, Trophy, Play, Pause, RotateCcw, BookType, LogOut
 } from 'lucide-react';
+
+// ==========================================
+// 🔗 BACKEND CONNECTION CONFIGURATION
+// ==========================================
+// Pointing to your deployed Render backend
+const API_BASE_URL = 'https://library-api-do91.onrender.com/api';
 
 // --- SHADCN UI MOCK COMPONENTS ---
 const Card = ({ children, className = '', onClick }) => (
@@ -22,7 +25,8 @@ const Button = ({ children, variant = 'default', size = 'default', className = '
     ghost: "hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-50",
     secondary: "bg-slate-100 text-slate-900 hover:bg-slate-100/80 dark:bg-slate-800 dark:text-slate-50 dark:hover:bg-slate-800/80",
     ai: "bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
+    success: "bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600",
+    danger: "bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
   };
   const sizes = { default: "h-10 px-4 py-2", sm: "h-9 rounded-md px-3", lg: "h-11 rounded-md px-8", icon: "h-10 w-10" };
   return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>;
@@ -41,18 +45,19 @@ const Badge = ({ children, variant = 'default', className = '' }) => {
   return <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${variants[variant]} ${className}`}>{children}</div>;
 };
 
-const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:bg-slate-50" }) => (
-  <div className={`relative h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${className}`}>
-    <div className={`h-full w-full flex-1 transition-all ${indicatorClass}`} style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
-  </div>
-);
+const Progress = ({ value, className = "", indicatorClass = "bg-slate-900 dark:bg-slate-50" }) => {
+  const safeValue = isNaN(value) ? 0 : Math.min(Math.max(value, 0), 100);
+  return (
+    <div className={`relative h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ${className}`}>
+      <div className={`h-full w-full flex-1 transition-all ${indicatorClass}`} style={{ transform: `translateX(-${100 - safeValue}%)` }} />
+    </div>
+  );
+};
 
 // --- GEMINI API HELPER ---
 const fetchGeminiResponse = async (prompt, asJson = false) => {
-  // Use a safer, targeted approach to environment variables to fix the import.meta ES2015 issue
   let apiKey = "";
   try {
-    // Check if we can access the env variable via import.meta safely
     const metaEnv = typeof import.meta !== 'undefined' ? import.meta.env : {};
     apiKey = metaEnv?.VITE_GEMINI_API_KEY || "";
   } catch (e) {
@@ -63,7 +68,7 @@ const fetchGeminiResponse = async (prompt, asJson = false) => {
     throw new Error("API Key missing. Please ensure VITE_GEMINI_API_KEY is configured in your Vercel Environment Variables.");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
@@ -111,9 +116,9 @@ const BookCard = ({ book, getLibraryBook, addToLibrary, onSelectBook }) => (
     </div>
     <div className="p-4 flex flex-col flex-grow">
       <h3 className="font-semibold text-sm line-clamp-2 mb-1">{book.title}</h3>
-      <p className="text-xs text-slate-500 line-clamp-1 mb-2">{book.authors[0]}</p>
+      <p className="text-xs text-slate-500 line-clamp-1 mb-2">{book.authors?.[0] || 'Unknown Author'}</p>
       <div className="mt-auto">
-        {getLibraryBook(book.id) ? (
+        {getLibraryBook(book.id || book.api_id) ? (
           <Badge variant="secondary" className="w-full justify-center">In Library</Badge>
         ) : (
           <Button variant="outline" size="sm" className="w-full text-xs" onClick={(e) => { e.stopPropagation(); addToLibrary(book); }}>
@@ -125,7 +130,7 @@ const BookCard = ({ book, getLibraryBook, addToLibrary, onSelectBook }) => (
   </Card>
 );
 
-const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getLibraryBook, addToLibrary }) => {
+const DashboardView = ({ user, library, readingGoal, discoverBooks, onSelectBook, getLibraryBook, addToLibrary }) => {
   const readingBooks = library.filter(b => b.status === 'reading');
   const completedBooks = library.filter(b => b.status === 'completed').length;
   const challengeProgress = Math.min((completedBooks / readingGoal) * 100, 100);
@@ -135,15 +140,15 @@ const DashboardView = ({ library, readingGoal, discoverBooks, onSelectBook, getL
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6 md:col-span-2 flex flex-col justify-center bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-slate-900 border-indigo-100 dark:border-indigo-900/50">
           <h2 className="text-2xl font-bold tracking-tight mb-2 flex items-center">
-            Welcome back! <Sparkles className="w-5 h-5 ml-2 text-indigo-500" />
+            Welcome back, {user?.name || 'Reader'}! <Sparkles className="w-5 h-5 ml-2 text-indigo-500" />
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">You're currently tracking {readingBooks.length} books. Keep up the momentum!</p>
           
           {readingBooks.length > 0 && (
             <div className="flex gap-4 overflow-x-auto pb-2">
               {readingBooks.map(book => (
-                <div key={book.id} onClick={() => onSelectBook(book)} className="flex gap-3 bg-white dark:bg-slate-800 p-3 rounded-lg border shadow-sm min-w-[280px] cursor-pointer hover:border-indigo-300 transition-colors">
-                  <img src={book.thumbnail} className="w-12 h-16 object-cover rounded shadow-sm" />
+                <div key={book.id || book.api_id} onClick={() => onSelectBook(book)} className="flex gap-3 bg-white dark:bg-slate-800 p-3 rounded-lg border shadow-sm min-w-[280px] cursor-pointer hover:border-indigo-300 transition-colors">
+                  <img src={book.thumbnail || book.cover_image} className="w-12 h-16 object-cover rounded shadow-sm" />
                   <div className="flex-1">
                     <h4 className="font-medium text-sm line-clamp-1">{book.title}</h4>
                     <p className="text-xs text-slate-500 mb-2">{Math.round((book.pagesRead / (book.pageCount || 1)) * 100)}% Complete</p>
@@ -209,6 +214,8 @@ const SearchView = ({ searchMode, searchQuery, isSearching, searchResults, onSel
 
 const ReaderView = ({ selectedBook, setCurrentView }) => {
   if (!selectedBook) return null;
+  const bookId = selectedBook.api_id || selectedBook.id; 
+  
   return (
     <div className="flex flex-col h-[85vh] w-full animate-in zoom-in duration-300">
       <div className="flex justify-between items-center mb-4">
@@ -222,7 +229,7 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
       </div>
       <div className="flex-grow rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white shadow-inner relative">
         <iframe
-          src={`https://books.google.com/books?id=${selectedBook.id}&lpg=PP1&pg=PP1&output=embed`}
+          src={`https://books.google.com/books?id=${bookId}&lpg=PP1&pg=PP1&output=embed`}
           width="100%"
           height="100%"
           frameBorder="0"
@@ -239,16 +246,21 @@ const ReaderView = ({ selectedBook, setCurrentView }) => {
 };
 
 const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, removeFromLibrary, addToLibrary, setCurrentView }) => {
-  if (!selectedBook) return null;
-  const libBook = getLibraryBook(selectedBook.id);
-  const bookToUse = libBook || selectedBook;
+  const bookIdentifier = selectedBook?.api_id || selectedBook?.id;
+  const libBook = getLibraryBook(bookIdentifier);
+  const bookToUse = libBook || selectedBook || {};
 
   const [tempPages, setTempPages] = useState(bookToUse.pagesRead || 0);
   const [aiSummary, setAiSummary] = useState(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
+
+  useEffect(() => {
+    setTempPages(bookToUse.pagesRead || 0);
+  }, [bookToUse.pagesRead]);
 
   useEffect(() => {
     let interval = null;
@@ -259,6 +271,8 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
+
+  if (!selectedBook) return null;
 
   const formatTime = (totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -271,7 +285,8 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     setIsGeneratingSummary(true);
     setAiSummary(null);
     try {
-      const text = await fetchGeminiResponse(`Provide a concise, spoiler-free 3-sentence summary and 3 key themes for: "${bookToUse.title}" by ${bookToUse.authors[0]}.`);
+      const author = bookToUse.authors ? bookToUse.authors[0] : (bookToUse.author || 'Unknown');
+      const text = await fetchGeminiResponse(`Provide a concise, spoiler-free 3-sentence summary and 3 key themes for: "${bookToUse.title}" by ${author}.`);
       if (!text) throw new Error("No response received.");
       setAiSummary(text);
     } catch (err) {
@@ -282,6 +297,15 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
     }
   };
 
+  const handleUpdate = async (updates) => {
+    setIsUpdating(true);
+    await updateLibraryBook(bookIdentifier, updates);
+    setIsUpdating(false);
+  };
+
+  const displayThumbnail = bookToUse.thumbnail || bookToUse.cover_image;
+  const displayAuthors = bookToUse.authors ? bookToUse.authors.join(', ') : (bookToUse.author || 'Unknown');
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500 pb-20">
       <Button variant="ghost" onClick={() => setCurrentView('dashboard')} className="-ml-4 mb-2">
@@ -289,11 +313,10 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
       </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        {/* Left Col */}
         <div className="md:col-span-4 lg:col-span-3 space-y-4">
           <div className="aspect-[2/3] w-full rounded-xl shadow-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border dark:border-slate-700">
-            {bookToUse.thumbnail ? (
-              <img src={bookToUse.thumbnail.replace('zoom=1', 'zoom=0')} alt={bookToUse.title} className="w-full h-full object-cover" />
+            {displayThumbnail ? (
+              <img src={displayThumbnail.replace('zoom=1', 'zoom=0')} alt={bookToUse.title} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center"><BookOpen className="w-16 h-16 text-slate-300" /></div>
             )}
@@ -308,9 +331,10 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reading Status</label>
                 <select 
-                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
+                  disabled={isUpdating}
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950 disabled:opacity-50"
                   value={libBook.status}
-                  onChange={(e) => updateLibraryBook(libBook.id, { status: e.target.value })}
+                  onChange={(e) => handleUpdate({ status: e.target.value })}
                 >
                   <option value="want_to_read">Plan to Read</option>
                   <option value="reading">Currently Reading</option>
@@ -321,9 +345,10 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center"><BookType className="w-3 h-3 mr-1"/> Format</label>
                 <select 
-                  className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
+                  disabled={isUpdating}
+                  className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950 disabled:opacity-50"
                   value={libBook.format || 'Physical'}
-                  onChange={(e) => updateLibraryBook(libBook.id, { format: e.target.value })}
+                  onChange={(e) => handleUpdate({ format: e.target.value })}
                 >
                   <option value="Physical">Physical</option>
                   <option value="E-book">E-book</option>
@@ -331,8 +356,8 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                 </select>
               </div>
 
-              <Button variant="outline" className="w-full text-red-600 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-950/30" onClick={() => removeFromLibrary(libBook.id)}>
-                Remove from Library
+              <Button disabled={isUpdating} variant="outline" className="w-full text-red-600 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-950/30" onClick={() => removeFromLibrary(bookIdentifier)}>
+                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Remove from Library'}
               </Button>
             </Card>
           ) : (
@@ -342,11 +367,10 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
           )}
         </div>
 
-        {/* Right Col */}
         <div className="md:col-span-8 lg:col-span-9 space-y-6">
           <div>
             <div className="flex flex-wrap gap-2 mb-3">
-              {bookToUse.categories?.slice(0, 3).map(cat => (
+              {(bookToUse.categories || []).slice(0, 3).map(cat => (
                 <Badge key={cat} variant="secondary">{cat}</Badge>
               ))}
             </div>
@@ -354,7 +378,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
               {bookToUse.title}
             </h1>
             <p className="text-xl text-slate-600 dark:text-slate-400">
-              by {bookToUse.authors.join(', ')}
+              by {displayAuthors}
             </p>
           </div>
 
@@ -392,7 +416,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                 <div className="flex-1 w-full space-y-3">
                   <div className="flex justify-between text-sm font-medium">
                     <span>Reading Progress</span>
-                    <span>{Math.round((libBook.pagesRead / (bookToUse.pageCount || 1)) * 100)}%</span>
+                    <span>{Math.round((libBook.pagesRead / (bookToUse.pageCount || bookToUse.page_count || 1)) * 100)}%</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Input 
@@ -401,19 +425,24 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
                       onChange={(e) => setTempPages(Number(e.target.value))}
                       className="w-24 text-center font-mono"
                     />
-                    <span className="text-sm text-slate-500 whitespace-nowrap">/ {bookToUse.pageCount || '?'} pages</span>
-                    <Button onClick={() => {
-                      updateLibraryBook(libBook.id, { pagesRead: tempPages });
-                      if (timerSeconds > 0) setTimerSeconds(0);
-                    }} className="w-full">Save</Button>
+                    <span className="text-sm text-slate-500 whitespace-nowrap">/ {bookToUse.pageCount || bookToUse.page_count || '?'} pages</span>
+                    <Button 
+                      disabled={isUpdating}
+                      onClick={() => {
+                        handleUpdate({ pagesRead: tempPages });
+                        if (timerSeconds > 0) setTimerSeconds(0);
+                      }} 
+                      className="w-full"
+                    >
+                      {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                    </Button>
                   </div>
-                  <Progress value={(libBook.pagesRead / (bookToUse.pageCount || 1)) * 100} indicatorClass="bg-indigo-600" />
+                  <Progress value={(libBook.pagesRead / (bookToUse.pageCount || bookToUse.page_count || 1)) * 100} indicatorClass="bg-indigo-600" />
                 </div>
               </div>
             </Card>
           )}
 
-          {/* AI Section */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center"><Sparkles className="w-5 h-5 mr-2 text-indigo-500" /> AI Story Insights</h3>
@@ -442,7 +471,7 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
             <h3 className="text-lg font-semibold mb-3">About this Book</h3>
             <div 
               className="prose prose-slate dark:prose-invert max-w-none prose-p:leading-relaxed text-slate-600 dark:text-slate-400"
-              dangerouslySetInnerHTML={{ __html: bookToUse.description }}
+              dangerouslySetInnerHTML={{ __html: bookToUse.description || "No description provided." }}
             />
           </div>
         </div>
@@ -451,11 +480,27 @@ const BookDetailView = ({ selectedBook, getLibraryBook, updateLibraryBook, remov
   );
 };
 
+const getStoredUser = () => {
+  try {
+    const item = localStorage.getItem('libtracker_user');
+    return item && item !== 'undefined' ? JSON.parse(item) : null;
+  } catch (err) {
+    return null;
+  }
+};
+
 // --- MAIN APP COMPONENT ---
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
   
+  // Auth State
+  const [token, setToken] = useState(localStorage.getItem('libtracker_token'));
+  const [user, setUser] = useState(getStoredUser());
+  const [authMode, setAuthMode] = useState('login');
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [authError, setAuthError] = useState('');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -468,9 +513,189 @@ export default function App() {
 
   const searchTimeout = useRef(null);
 
+  // --- AUTHENTICATION METHODS ---
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('libtracker_token');
+    localStorage.removeItem('libtracker_user');
+    setToken(null);
+    setUser(null);
+    setLibrary([]);
+  }, []);
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authForm)
+      });
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error('Server returned an invalid response.');
+      }
+      
+      if (!res.ok) throw new Error(data.error || 'Authentication failed');
+      
+      localStorage.setItem('libtracker_token', data.token);
+      localStorage.setItem('libtracker_user', JSON.stringify(data.user));
+      setToken(data.token);
+      setUser(data.user);
+    } catch (err) {
+      setAuthError(err.message);
+    }
+  };
+
+  const handleAuthError = useCallback((res) => {
+    if (res.status === 401 || res.status === 403) {
+      handleLogout();
+      throw new Error("Session expired. Please log in again.");
+    }
+  }, [handleLogout]);
+
+  // --- DATABASE & API METHODS ---
+  const fetchLibrary = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/library`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      handleAuthError(res);
+      const data = await res.json();
+      
+      if (Array.isArray(data)) {
+        const normalizedLibrary = data.map(dbBook => ({
+          id: dbBook.api_id,
+          title: dbBook.title,
+          authors: [dbBook.author], 
+          description: dbBook.description,
+          thumbnail: dbBook.cover_image,
+          pageCount: dbBook.page_count,
+          status: dbBook.status,
+          pagesRead: dbBook.pagesRead || 0,
+          addedAt: dbBook.addedAt,
+          format: dbBook.format || 'Physical'
+        }));
+        setLibrary(normalizedLibrary);
+      } else {
+        console.error("API did not return a valid array:", data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [token, handleAuthError]);
+
+  const fetchGoogleBooks = useCallback(async (query, setter, maxResults = 12) => {
+    setIsSearching(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
+      const data = await res.json();
+      const formatted = (data.items || []).map(item => ({
+        id: item.id,
+        title: item.volumeInfo?.title || 'Unknown Title',
+        authors: item.volumeInfo?.authors || ['Unknown Author'],
+        description: item.volumeInfo?.description || 'No description available.',
+        thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
+        pageCount: item.volumeInfo?.pageCount || 0,
+        publishedDate: item.volumeInfo?.publishedDate,
+        categories: item.volumeInfo?.categories || [],
+      }));
+      setter(formatted);
+    } catch (err) {
+      console.error(err);
+    } finally { 
+      setIsSearching(false); 
+    }
+  }, []);
+
+  const addToLibrary = async (book, status = 'want_to_read') => {
+    if (!library.find(b => b.id === book.id)) {
+      setLibrary(prev => [...prev, { ...book, status, pagesRead: 0, addedAt: Date.now(), format: 'Physical' }]);
+      try {
+        const res = await fetch(`${API_BASE_URL}/library`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            id: book.id, title: book.title, authors: book.authors, description: book.description,
+            thumbnail: book.thumbnail, pageCount: book.pageCount, status: status, format: 'Physical'
+          })
+        });
+        handleAuthError(res);
+      } catch (error) { console.error(error); }
+    }
+  };
+
+  const updateLibraryBook = async (bookId, updates) => {
+    setLibrary(prev => prev.map(b => b.id === bookId ? { ...b, ...updates } : b));
+    try {
+      const res = await fetch(`${API_BASE_URL}/library/${bookId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      });
+      handleAuthError(res);
+    } catch (error) { console.error(error); }
+  };
+
+  const removeFromLibrary = async (bookId) => {
+    setLibrary(prev => prev.filter(b => b.id !== bookId));
+    try {
+      const res = await fetch(`${API_BASE_URL}/library/${bookId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      handleAuthError(res);
+      if (currentView === 'book_detail') setCurrentView('dashboard');
+    } catch (error) { console.error(error); }
+  };
+
+  const handleVibeSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || searchMode !== 'vibe') return;
+    setCurrentView('search');
+    setIsSearching(true);
+    setSearchResults([]);
+
+    try {
+      const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles for this vibe: "${searchQuery}".`, true);
+      const cleanJson = jsonResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const recommendedTitles = JSON.parse(cleanJson);
+      
+      const bookPromises = recommendedTitles.map(title => 
+        fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + title)}&maxResults=1`).then(res => res.json())
+      );
+      
+      const results = await Promise.all(bookPromises);
+      const finalBooks = results.filter(data => data.items && data.items.length > 0).map(data => {
+          const item = data.items[0];
+          return {
+            id: item.id, title: item.volumeInfo?.title || 'Unknown', authors: item.volumeInfo?.authors || ['Unknown'],
+            description: item.volumeInfo?.description || '', thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
+            pageCount: item.volumeInfo?.pageCount || 0, categories: item.volumeInfo?.categories || [],
+          };
+        });
+      setSearchResults(finalBooks);
+    } catch (error) {
+      alert("AI Search failed. Please check your environment configuration.");
+      console.error(error);
+    } finally { setIsSearching(false); }
+  };
+
+  const getLibraryBook = (bookId) => library.find(b => b.id === bookId || b.api_id === bookId);
+  const handleSelectBook = (book) => { setSelectedBook(book); setCurrentView('book_detail'); };
+
+  // --- EFFECTS ---
   useEffect(() => {
     fetchGoogleBooks('subject:fiction bestseller', setDiscoverBooks, 6);
-  }, []);
+  }, [fetchGoogleBooks]);
+
+  useEffect(() => {
+    if (token) fetchLibrary();
+  }, [token, fetchLibrary]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
@@ -488,87 +713,53 @@ export default function App() {
       setSearchResults([]);
     }
     return () => clearTimeout(searchTimeout.current);
-  }, [searchQuery, searchMode]);
+  }, [searchQuery, searchMode, fetchGoogleBooks]);
 
-  const fetchGoogleBooks = async (query, setter, maxResults = 12) => {
-    setIsSearching(true);
-    try {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
-      const data = await res.json();
-      const formatted = (data.items || []).map(item => ({
-        id: item.id,
-        title: item.volumeInfo?.title || 'Unknown Title',
-        authors: item.volumeInfo?.authors || ['Unknown Author'],
-        description: item.volumeInfo?.description || 'No description available.',
-        thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
-        pageCount: item.volumeInfo?.pageCount || 0,
-        publishedDate: item.volumeInfo?.publishedDate,
-        categories: item.volumeInfo?.categories || [],
-      }));
-      setter(formatted);
-    } catch (error) {
-      console.error("Error fetching books:", error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  // --- RENDER AUTH SCREEN IF NOT LOGGED IN ---
+  if (!token) {
+    return (
+      <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 transition-colors ${isDarkMode ? 'dark' : ''}`}>
+        <Card className="w-full max-w-md p-8 shadow-xl border-indigo-100 dark:border-indigo-900/30">
+          <div className="flex justify-center mb-6">
+            <div className="bg-indigo-600 p-3 rounded-xl shadow-md"><BookOpen className="w-8 h-8 text-white" /></div>
+          </div>
+          <h1 className="text-2xl font-bold text-center mb-2">Library Tracker</h1>
+          <p className="text-center text-slate-500 mb-8">{authMode === 'login' ? 'Sign in to access your library' : 'Create an account to start tracking'}</p>
+          
+          {authError && <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm mb-4 border border-red-100">{authError}</div>}
+          
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            {authMode === 'register' && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Full Name</label>
+                <Input required value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} placeholder="John Doe" />
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-medium mb-1 block">Email</label>
+              <Input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} placeholder="john@example.com" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Password</label>
+              <Input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="••••••••" />
+            </div>
+            <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-6" type="submit">
+              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            </Button>
+          </form>
+          
+          <div className="mt-6 text-center text-sm">
+            <span className="text-slate-500">{authMode === 'login' ? "Don't have an account? " : "Already have an account? "}</span>
+            <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-indigo-600 font-semibold hover:underline">
+              {authMode === 'login' ? 'Sign up' : 'Log in'}
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
-  const handleVibeSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim() || searchMode !== 'vibe') return;
-    
-    setCurrentView('search');
-    setIsSearching(true);
-    setSearchResults([]);
-
-    try {
-      const jsonResponse = await fetchGeminiResponse(`Recommend 5 specific book titles for this vibe: "${searchQuery}".`, true);
-      const recommendedTitles = JSON.parse(jsonResponse);
-      
-      const bookPromises = recommendedTitles.map(title => 
-        fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + title)}&maxResults=1`).then(res => res.json())
-      );
-      
-      const results = await Promise.all(bookPromises);
-      const finalBooks = results
-        .filter(data => data.items && data.items.length > 0)
-        .map(data => {
-          const item = data.items[0];
-          return {
-            id: item.id,
-            title: item.volumeInfo?.title || 'Unknown',
-            authors: item.volumeInfo?.authors || ['Unknown'],
-            description: item.volumeInfo?.description || '',
-            thumbnail: item.volumeInfo?.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
-            pageCount: item.volumeInfo?.pageCount || 0,
-            categories: item.volumeInfo?.categories || [],
-          };
-        });
-
-      setSearchResults(finalBooks);
-    } catch (error) {
-      console.error("Vibe search error:", error);
-      alert("AI Search failed. Please check your environment configuration.");
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const addToLibrary = (book) => {
-    if (!library.find(b => b.id === book.id)) {
-      setLibrary([...library, { ...book, status: 'want_to_read', pagesRead: 0, addedAt: Date.now(), format: 'Physical' }]);
-    }
-  };
-
-  const updateLibraryBook = (bookId, updates) => setLibrary(library.map(b => b.id === bookId ? { ...b, ...updates } : b));
-  const removeFromLibrary = (bookId) => setLibrary(library.filter(b => b.id !== bookId));
-  const getLibraryBook = (bookId) => library.find(b => b.id === bookId);
-  
-  const handleSelectBook = (book) => {
-    setSelectedBook(book);
-    setCurrentView('book_detail');
-  };
-
+  // --- MAIN APP RENDER ---
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300 flex flex-col font-sans ${isDarkMode ? 'dark' : ''}`}>
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80">
@@ -585,13 +776,7 @@ export default function App() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               {searchMode === 'vibe' && <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400 animate-pulse" />}
               <form onSubmit={searchMode === 'vibe' ? handleVibeSearch : (e) => e.preventDefault()}>
-                <Input 
-                  type="text" 
-                  placeholder={searchMode === 'vibe' ? "Describe the mood: 'A cozy fantasy mystery...'" : "Title, author, or ISBN..."}
-                  className={`w-full pl-9 pr-9 transition-colors ${searchMode === 'vibe' ? 'bg-indigo-50 border-indigo-200 focus-visible:ring-indigo-500 dark:bg-indigo-950/30 dark:border-indigo-800' : 'bg-slate-100 border-transparent focus-visible:bg-white dark:bg-slate-900 dark:focus-visible:bg-slate-950'}`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+                <Input type="text" placeholder={searchMode === 'vibe' ? "Describe the mood: 'A cozy fantasy mystery...'" : "Title, author, or ISBN..."} className={`w-full pl-9 pr-9 transition-colors ${searchMode === 'vibe' ? 'bg-indigo-50 border-indigo-200 focus-visible:ring-indigo-500 dark:bg-indigo-950/30 dark:border-indigo-800' : 'bg-slate-100 border-transparent focus-visible:bg-white dark:bg-slate-900 dark:focus-visible:bg-slate-950'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               </form>
             </div>
             <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 shrink-0 border dark:border-slate-800">
@@ -600,19 +785,23 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex items-center gap-1 shrink-0">
+          <nav className="flex items-center gap-2 shrink-0">
             <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)}>
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500 hover:text-red-600">
+              <LogOut className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">Logout</span>
             </Button>
           </nav>
         </div>
       </header>
 
       <main className="flex-grow container mx-auto px-4 py-8">
-        {currentView === 'dashboard' && <DashboardView library={library} readingGoal={readingGoal} discoverBooks={discoverBooks} onSelectBook={handleSelectBook} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} />}
+        {currentView === 'dashboard' && <DashboardView user={user} library={library} readingGoal={readingGoal} discoverBooks={discoverBooks} onSelectBook={handleSelectBook} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} />}
         {currentView === 'search' && <SearchView searchMode={searchMode} searchQuery={searchQuery} isSearching={isSearching} searchResults={searchResults} onSelectBook={handleSelectBook} getLibraryBook={getLibraryBook} addToLibrary={addToLibrary} />}
-        {currentView === 'book_detail' && <BookDetailView selectedBook={selectedBook} getLibraryBook={getLibraryBook} updateLibraryBook={updateLibraryBook} removeFromLibrary={removeFromLibrary} addToLibrary={addToLibrary} setCurrentView={setCurrentView} />}
-        {currentView === 'reader' && <ReaderView selectedBook={selectedBook} setCurrentView={setCurrentView} />}
+        {currentView === 'book_detail' && selectedBook && <BookDetailView selectedBook={selectedBook} getLibraryBook={getLibraryBook} updateLibraryBook={updateLibraryBook} removeFromLibrary={removeFromLibrary} addToLibrary={addToLibrary} setCurrentView={setCurrentView} />}
+        {currentView === 'reader' && selectedBook && <ReaderView selectedBook={selectedBook} setCurrentView={setCurrentView} />}
       </main>
     </div>
   );
