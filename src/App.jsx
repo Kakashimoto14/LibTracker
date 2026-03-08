@@ -8,7 +8,7 @@ import {
 // 🔗 BACKEND CONNECTION CONFIGURATION
 // ==========================================
 // Pointing to your deployed Render backend
-const API_BASE_URL = 'https://library-api-do91.onrender.com/api';
+const API_BASE_URL = 'https://library-api-do91.onrender.com';
 
 // --- SHADCN UI MOCK COMPONENTS ---
 const Card = ({ children, className = '', onClick }) => (
