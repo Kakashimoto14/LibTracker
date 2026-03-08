@@ -500,6 +500,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false); // NEW STATE FOR LOADING
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -525,6 +526,8 @@ export default function App() {
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setIsAuthLoading(true); // START LOADING SPINNER
+
     try {
       const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -537,7 +540,7 @@ export default function App() {
       try {
         data = await res.json();
       } catch (err) {
-        throw new Error('Server returned an invalid response.');
+        throw new Error('Server returned an invalid response. Ensure your backend is running.');
       }
       
       if (!res.ok) throw new Error(data.error || 'Authentication failed');
@@ -547,7 +550,10 @@ export default function App() {
       setToken(data.token);
       setUser(data.user);
     } catch (err) {
+      console.error("Auth Request Failed:", err);
       setAuthError(err.message);
+    } finally {
+      setIsAuthLoading(false); // STOP LOADING SPINNER
     }
   };
 
@@ -732,25 +738,27 @@ export default function App() {
             {authMode === 'register' && (
               <div>
                 <label className="text-sm font-medium mb-1 block">Full Name</label>
-                <Input required value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} placeholder="John Doe" />
+                <Input required value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} placeholder="John Doe" disabled={isAuthLoading} />
               </div>
             )}
             <div>
               <label className="text-sm font-medium mb-1 block">Email</label>
-              <Input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} placeholder="john@example.com" />
+              <Input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} placeholder="john@example.com" disabled={isAuthLoading} />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Password</label>
-              <Input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="••••••••" />
+              <Input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="••••••••" disabled={isAuthLoading} />
             </div>
-            <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-6" type="submit">
-              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            
+            <Button disabled={isAuthLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-6 transition-all" type="submit">
+              {isAuthLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {isAuthLoading ? 'Please wait...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
             </Button>
           </form>
           
           <div className="mt-6 text-center text-sm">
             <span className="text-slate-500">{authMode === 'login' ? "Don't have an account? " : "Already have an account? "}</span>
-            <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-indigo-600 font-semibold hover:underline">
+            <button disabled={isAuthLoading} onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-indigo-600 font-semibold hover:underline disabled:opacity-50">
               {authMode === 'login' ? 'Sign up' : 'Log in'}
             </button>
           </div>
